@@ -349,6 +349,10 @@ export namespace Config {
         .describe(
           "Timeout in ms for fetching tools from the MCP server. Defaults to 5000 (5 seconds) if not specified.",
         ),
+      deferLoading: z
+        .boolean()
+        .optional()
+        .describe("If true, tools from this server are deferred until discovered via tool_search. Defaults to true."),
     })
     .strict()
     .meta({
@@ -390,6 +394,10 @@ export namespace Config {
         .describe(
           "Timeout in ms for fetching tools from the MCP server. Defaults to 5000 (5 seconds) if not specified.",
         ),
+      deferLoading: z
+        .boolean()
+        .optional()
+        .describe("If true, tools from this server are deferred until discovered via tool_search. Defaults to true."),
     })
     .strict()
     .meta({
@@ -398,6 +406,17 @@ export namespace Config {
 
   export const Mcp = z.discriminatedUnion("type", [McpLocal, McpRemote])
   export type Mcp = z.infer<typeof Mcp>
+
+  export const ToolSearch = z
+    .object({
+      enabled: z.boolean().optional().describe("Enable tool search feature. Defaults to true."),
+      deferBuiltins: z.array(z.string()).optional().describe("Built-in tool IDs to defer"),
+      alwaysLoad: z.array(z.string()).optional().describe("Tool IDs to always load, never defer"),
+      searchLimit: z.number().int().positive().optional().describe("Max results from tool_search. Defaults to 5."),
+    })
+    .strict()
+    .meta({ ref: "ToolSearchConfig" })
+  export type ToolSearch = z.infer<typeof ToolSearch>
 
   export const PermissionAction = z.enum(["ask", "allow", "deny"]).meta({
     ref: "PermissionActionConfig",
@@ -885,6 +904,7 @@ export namespace Config {
         )
         .optional()
         .describe("MCP (Model Context Protocol) server configurations"),
+      toolSearch: ToolSearch.optional().describe("Tool search configuration for deferred tool loading"),
       formatter: z
         .union([
           z.literal(false),

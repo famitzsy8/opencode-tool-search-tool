@@ -12,6 +12,7 @@ import PROMPT_ANTHROPIC_WITHOUT_TODO from "./prompt/qwen.txt"
 import PROMPT_BEAST from "./prompt/beast.txt"
 import PROMPT_GEMINI from "./prompt/gemini.txt"
 import PROMPT_ANTHROPIC_SPOOF from "./prompt/anthropic_spoof.txt"
+import PROMPT_LOCAL from "./prompt/local.txt"
 
 import PROMPT_CODEX from "./prompt/codex.txt"
 import type { Provider } from "@/provider/provider"
@@ -24,11 +25,13 @@ export namespace SystemPrompt {
   }
 
   export function provider(model: Provider.Model) {
+    if (model.api.id.includes("gpt-oss")) return [PROMPT_LOCAL]
     if (model.api.id.includes("gpt-5")) return [PROMPT_CODEX]
     if (model.api.id.includes("gpt-") || model.api.id.includes("o1") || model.api.id.includes("o3"))
       return [PROMPT_BEAST]
     if (model.api.id.includes("gemini-")) return [PROMPT_GEMINI]
     if (model.api.id.includes("claude")) return [PROMPT_ANTHROPIC]
+    if (model.api.id.includes("qwen") || model.api.id.includes("gpt-oss")) return [PROMPT_LOCAL]
     return [PROMPT_ANTHROPIC_WITHOUT_TODO]
   }
 

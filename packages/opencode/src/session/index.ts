@@ -23,6 +23,31 @@ import { PermissionNext } from "@/permission/next"
 export namespace Session {
   const log = Log.create({ service: "session" })
 
+  // In-memory tracking of discovered tools per session
+  const discoveredTools = Instance.state(
+    () => new Map<string, Set<string>>(),
+    async (map) => map.clear()
+  )
+
+  export function addDiscoveredTools(sessionID: string, toolIDs: string[]) {
+    const map = discoveredTools()
+    if (!map.has(sessionID)) {
+      map.set(sessionID, new Set())
+    }
+    const set = map.get(sessionID)!
+    for (const id of toolIDs) {
+      set.add(id)
+    }
+  }
+
+  export function getDiscoveredTools(sessionID: string): Set<string> {
+    return discoveredTools().get(sessionID) ?? new Set()
+  }
+
+  export function clearDiscoveredTools(sessionID: string) {
+    discoveredTools().delete(sessionID)
+  }
+
   const parentTitlePrefix = "New session - "
   const childTitlePrefix = "Child session - "
 
@@ -319,6 +344,7 @@ export namespace Session {
         await Storage.remove(msg)
       }
       await Storage.remove(["session", project.id, sessionID])
+      clearDiscoveredTools(sessionID)
       Bus.publish(Event.Deleted, {
         info: session,
       })

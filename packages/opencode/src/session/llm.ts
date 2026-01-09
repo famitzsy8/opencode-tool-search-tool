@@ -121,6 +121,56 @@ export namespace LLM {
 
     const tools = await resolveTools(input)
 
+    // Estimate token count (rough: ~4 chars per token)
+    const allMessages = [
+      ...system.map((x) => ({ role: "system" as const, content: x })),
+      ...input.messages,
+    ]
+    const systemChars = system.reduce((acc, s) => acc + s.length, 0)
+    const messagesChars = input.messages.reduce((acc, m) => {
+      if (typeof m.content === "string") return acc + m.content.length
+      if (Array.isArray(m.content)) {
+        return acc + m.content.reduce((a, p) => a + ("text" in p ? p.text.length : 100), 0)
+      }
+      return acc
+    }, 0)
+    const toolsChars = Object.entries(tools).reduce((acc, [name, t]) => {
+      return acc + name.length + (t.description?.length ?? 0) + JSON.stringify(t.inputSchema ?? {}).length
+    }, 0)
+    const totalChars = systemChars + messagesChars + toolsChars
+    const estimatedTokens = Math.round(totalChars / 4)
+
+    // Skip verbose logging for small utility agents (title, summary)
+    if (!input.small) {
+      l.warn("context", {
+        estimatedTokens,
+        systemChars,
+        messagesChars,
+        toolsChars,
+        messageCount: input.messages.length,
+        toolCount: Object.keys(tools).length,
+        tools: Object.keys(tools),
+      })
+
+      // Full context dump
+      l.warn("context:system", {
+        system: system,
+      })
+      l.warn("context:messages", {
+        messages: allMessages.map((m) => ({
+          role: m.role,
+          content: m.content,
+        })),
+      })
+      l.warn("context:tools", {
+        tools: Object.entries(tools).map(([name, t]) => ({
+          name,
+          description: t.description,
+          inputSchema: t.inputSchema,
+        })),
+      })
+    }
+
     return streamText({
       onError(error) {
         l.error("stream error", {

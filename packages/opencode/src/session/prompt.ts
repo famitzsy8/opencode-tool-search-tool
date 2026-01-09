@@ -20,9 +20,12 @@ import PROMPT_PLAN from "../session/prompt/plan.txt"
 import BUILD_SWITCH from "../session/prompt/build-switch.txt"
 import MAX_STEPS from "../session/prompt/max-steps.txt"
 import { defer } from "../util/defer"
-import { clone } from "remeda"
+import { clone, mergeDeep } from "remeda"
 import { ToolRegistry } from "../tool/registry"
 import { MCP } from "../mcp"
+import { Config } from "../config/config"
+import { ToolCatalog } from "../tool/catalog"
+import { Wildcard } from "../util/wildcard"
 import { LSP } from "../lsp"
 import { ReadTool } from "../tool/read"
 import { ListTool } from "../tool/ls"
@@ -646,17 +649,25 @@ export namespace SessionPrompt {
     processor: SessionProcessor.Info
     bypassAgentCheck: boolean
   }) {
+    log.warn("resolveTools START", { sessionID: input.session.id, agent: input.agent.name })
     using _ = log.time("resolveTools")
     const tools: Record<string, AITool> = {}
 
-    const context = (args: any, options: ToolCallOptions): Tool.Context => ({
+    // Tool search configuration
+    const discoveredToolIDs = Session.getDiscoveredTools(input.session.id)
+    const config = await Config.get()
+    const toolSearchEnabled = config.toolSearch?.enabled ?? true
+    const alwaysLoad = new Set(config.toolSearch?.alwaysLoad ?? [])
+    const enabledTools = input.tools ?? {}
+
+    const context = (args: Record<string, unknown>, options: ToolCallOptions): Tool.Context => ({
       sessionID: input.session.id,
       abort: options.abortSignal!,
       messageID: input.processor.message.id,
       callID: options.toolCallId,
       extra: { model: input.model, bypassAgentCheck: input.bypassAgentCheck },
       agent: input.agent.name,
-      metadata: async (val: { title?: string; metadata?: any }) => {
+      metadata: async (val: { title?: string; metadata?: Record<string, unknown> }) => {
         const match = input.processor.partFromToolCall(options.toolCallId)
         if (match && match.state.status === "running") {
           await Session.updatePart({
@@ -684,6 +695,16 @@ export namespace SessionPrompt {
     })
 
     for (const item of await ToolRegistry.tools(input.model.providerID, input.agent)) {
+      // Tool search filtering
+      if (Wildcard.all(item.id, enabledTools) === false) continue
+      const catalogEntry = ToolCatalog.get(item.id)
+      const isDeferred = catalogEntry?.deferLoading ?? false
+      const isDiscovered = discoveredToolIDs.has(item.id)
+      const isAlwaysLoad = alwaysLoad.has(item.id)
+
+      if (toolSearchEnabled && isDeferred && !isDiscovered && !isAlwaysLoad) {
+        continue
+      }
       const schema = ProviderTransform.schema(input.model, z.toJSONSchema(item.parameters))
       tools[item.id] = tool({
         id: item.id as any,
@@ -724,6 +745,16 @@ export namespace SessionPrompt {
     }
 
     for (const [key, item] of Object.entries(await MCP.tools())) {
+      // Tool search filtering for MCP tools
+      if (Wildcard.all(key, enabledTools) === false) continue
+      const catalogEntry = ToolCatalog.get(key)
+      const isDeferred = catalogEntry?.deferLoading ?? true // MCP defaults to deferred
+      const isDiscovered = discoveredToolIDs.has(key)
+      const isAlwaysLoad = alwaysLoad.has(key)
+
+      if (toolSearchEnabled && isDeferred && !isDiscovered && !isAlwaysLoad) {
+        continue
+      }
       const execute = item.execute
       if (!execute) continue
 
@@ -797,6 +828,14 @@ export namespace SessionPrompt {
       }
       tools[key] = item
     }
+
+    log.warn("resolveTools END", {
+      sessionID: input.session.id,
+      toolCount: Object.keys(tools).length,
+      tools: Object.keys(tools),
+      discoveredToolIDs: Array.from(discoveredToolIDs),
+      toolSearchEnabled,
+    })
 
     return tools
   }

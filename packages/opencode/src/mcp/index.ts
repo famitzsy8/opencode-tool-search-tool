@@ -572,6 +572,35 @@ export namespace MCP {
     return result
   }
 
+  export async function toolsMeta(): Promise<Record<string, Array<{
+    name: string
+    description: string
+    inputSchema: JSONSchema7
+  }>>> {
+    const result: Record<string, Array<{ name: string; description: string; inputSchema: JSONSchema7 }>> = {}
+    const s = await state()
+    const clientsSnapshot = await clients()
+
+    for (const [clientName, client] of Object.entries(clientsSnapshot)) {
+      if (s.status[clientName]?.status !== "connected") {
+        continue
+      }
+
+      const toolsResult = await client.listTools().catch((e) => {
+        log.error("failed to get tools for catalog", { clientName, error: e.message })
+        return undefined
+      })
+      if (!toolsResult) continue
+
+      result[clientName] = toolsResult.tools.map((t) => ({
+        name: t.name,
+        description: t.description ?? "",
+        inputSchema: t.inputSchema as JSONSchema7,
+      }))
+    }
+    return result
+  }
+
   export async function prompts() {
     const s = await state()
     const clientsSnapshot = await clients()
