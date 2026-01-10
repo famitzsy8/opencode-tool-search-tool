@@ -19,6 +19,8 @@ import { Plugin } from "@/plugin"
 import { SystemPrompt } from "./system"
 import { Flag } from "@/flag/flag"
 import { PermissionNext } from "@/permission/next"
+import { Bus } from "@/bus"
+import { ContextEvent } from "@/bus/context-event"
 
 export namespace LLM {
   const log = Log.create({ service: "llm" })
@@ -170,6 +172,36 @@ export namespace LLM {
         })),
       })
     }
+
+    // Emit rich context event for external consumers
+    Bus.publish(ContextEvent.LLMRequest, {
+      sessionID: input.sessionID,
+      messageID: input.user.id,
+      agent: {
+        name: input.agent.name,
+        description: input.agent.description,
+      },
+      model: {
+        providerID: input.model.providerID,
+        modelID: input.model.id,
+      },
+      system,
+      messages: allMessages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      })),
+      tools: Object.entries(tools).map(([name, t]) => ({
+        name,
+        description: t.description,
+      })),
+      tokenEstimate: {
+        system: Math.round(systemChars / 4),
+        messages: Math.round(messagesChars / 4),
+        tools: Math.round(toolsChars / 4),
+        total: estimatedTokens,
+      },
+      timestamp: Date.now(),
+    })
 
     return streamText({
       onError(error) {

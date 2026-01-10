@@ -1,6 +1,7 @@
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
 import { GlobalBus } from "@/bus/global"
+import { ContextEvent } from "@/bus/context-event"
 import { Log } from "../util/log"
 import { describeRoute, generateSpecs, validator, resolver, openAPIRouteHandler } from "hono-openapi"
 import { Hono } from "hono"
@@ -74,6 +75,7 @@ export namespace Server {
   const app = new Hono()
   export const App: () => Hono = lazy(
     () =>
+      // @ts-ignore Type instantiation is excessively deep due to long route chain
       app
         .onError((err, c) => {
           log.error("failed", {
@@ -2812,6 +2814,108 @@ export namespace Server {
                   unsub()
                   resolve()
                   log.info("event disconnected")
+                })
+              })
+            })
+          },
+        )
+        .get(
+          "/context/stream",
+          describeRoute({
+            summary: "Subscribe to context events",
+            description:
+              "Stream rich context events for LLM requests, tool executions, and response generation. Designed for external UIs and debugging tools.",
+            operationId: "context.stream",
+            responses: {
+              200: {
+                description: "Context event stream",
+                content: {
+                  "text/event-stream": {
+                    schema: resolver(
+                      z
+                        .object({
+                          directory: z.string().optional(),
+                          payload: z.object({
+                            type: z.string(),
+                            properties: z.record(z.string(), z.unknown()),
+                          }),
+                        })
+                        .meta({ ref: "ContextEvent" }),
+                    ),
+                  },
+                },
+              },
+            },
+          }),
+          validator(
+            "query",
+            z.object({
+              sessionID: z.string().optional().meta({ description: "Filter events by session ID" }),
+              includeDeltas: z
+                .enum(["true", "false"])
+                .optional()
+                .default("true")
+                .meta({ description: "Include text and reasoning delta events (can be noisy)" }),
+            }),
+          ),
+          async (c) => {
+            const query = c.req.valid("query")
+            const sessionFilter = query.sessionID
+            const includeDeltas = query.includeDeltas !== "false"
+            log.info("context stream connected", { sessionFilter, includeDeltas })
+
+            const contextEventTypes = new Set<string>([
+              ContextEvent.LLMRequest.type,
+              ContextEvent.ToolsResolved.type,
+              ContextEvent.ToolExecutionStart.type,
+              ContextEvent.ToolExecutionComplete.type,
+              ContextEvent.ToolExecutionError.type,
+              ContextEvent.StepComplete.type,
+              ...(includeDeltas ? [ContextEvent.TextDelta.type, ContextEvent.ReasoningDelta.type] : []),
+            ])
+
+            return streamSSE(c, async (stream) => {
+              stream.writeSSE({
+                data: JSON.stringify({
+                  payload: {
+                    type: "context.connected",
+                    properties: { sessionFilter, includeDeltas },
+                  },
+                }),
+              })
+
+              const handler = (event: { directory?: string; payload: { type: string; properties?: Record<string, unknown> } }) => {
+                // Filter to context events only
+                if (!contextEventTypes.has(event.payload.type)) return
+
+                // Filter by session if specified
+                if (sessionFilter && event.payload.properties?.sessionID !== sessionFilter) return
+
+                stream.writeSSE({
+                  data: JSON.stringify(event),
+                })
+              }
+
+              GlobalBus.on("event", handler)
+
+              // Send heartbeat every 30s
+              const heartbeat = setInterval(() => {
+                stream.writeSSE({
+                  data: JSON.stringify({
+                    payload: {
+                      type: "context.heartbeat",
+                      properties: {},
+                    },
+                  }),
+                })
+              }, 30000)
+
+              await new Promise<void>((resolve) => {
+                stream.onAbort(() => {
+                  clearInterval(heartbeat)
+                  GlobalBus.off("event", handler)
+                  resolve()
+                  log.info("context stream disconnected")
                 })
               })
             })
