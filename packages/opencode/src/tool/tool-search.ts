@@ -34,7 +34,12 @@ How NOT to Use It:
     if (results.length === 0) {
       return {
         title: "No tools found",
-        metadata: { query: args.query, count: 0, tools: [] as string[] },
+        metadata: {
+          query: args.query,
+          count: 0,
+          tools: [] as string[],
+          displayOutput: "No tools found",
+        },
         output: `No tools found matching "${args.query}". Try a different search term.`,
       }
     }
@@ -44,23 +49,17 @@ How NOT to Use It:
       results.map((r) => r.id),
     )
 
-    const formatted = results
-      .map((tool, i) => {
-        const params =
-          tool.parameters.length > 0 ? `\n   Parameters: ${tool.parameters.join(", ")}` : ""
-        const source = tool.mcpServer ? ` (from ${tool.mcpServer} MCP server)` : ` (${tool.source})`
-        return `${i + 1}. **${tool.id}**${source}\n   ${tool.description}${params}`
-      })
-      .join("\n\n")
+    const toolNames = results.map((r) => r.id)
 
     return {
       title: `Found ${results.length} tools`,
       metadata: {
         query: args.query,
         count: results.length,
-        tools: results.map((r) => r.id),
+        tools: toolNames,
+        displayOutput: toolNames.join("\n"),
       },
-      output: `Found ${results.length} tools matching "${args.query}":\n\n${formatted}\n\nThese tools are now available for use.`,
+      output: `Now you can also use the following tools: ${toolNames.join(", ")}`,
     }
   },
 })

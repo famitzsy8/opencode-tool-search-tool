@@ -1,7 +1,7 @@
-import fuzzysort from "fuzzysort"
 import { ToolRegistry } from "./registry"
 import { MCP } from "../mcp"
 import { Config } from "../config/config"
+import { BM25 } from "../search/bm25"
 import z from "zod"
 import type { JSONSchema7 } from "ai"
 
@@ -20,6 +20,7 @@ export namespace ToolCatalog {
   const DEFAULT_CORE_TOOLS = ["tool_search", "invalid"]
 
   let catalog: CatalogEntry[] = []
+  let searchIndex: BM25.Index<CatalogEntry> | null = null
 
   function extractParamNames(schema: z.ZodType): string[] {
     if (schema instanceof z.ZodObject) {
@@ -83,21 +84,19 @@ export namespace ToolCatalog {
         })
       }
     }
+
+    // Build BM25 search index
+    searchIndex = BM25.createIndex(catalog, (entry) => [entry.name, entry.description])
   }
 
   export function search(query: string, opts?: { limit?: number; source?: string }): CatalogEntry[] {
-    if (catalog.length === 0) return []
-    const limit = opts?.limit ?? 5
+    if (!searchIndex || catalog.length === 0) return []
 
-    const results = fuzzysort.go(query, catalog, {
-      keys: ["name", "description"],
-      limit,
-      threshold: -10000,
-    })
+    const results = BM25.search(searchIndex, query, opts?.limit ?? 5)
 
     return results
-      .filter((r) => !opts?.source || r.obj.source === opts.source)
-      .map((r) => r.obj)
+      .filter((r) => !opts?.source || r.item.source === opts.source)
+      .map((r) => r.item)
   }
 
   export function get(id: string): CatalogEntry | undefined {

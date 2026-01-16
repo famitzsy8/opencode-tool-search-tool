@@ -6,6 +6,7 @@ import { Agent } from "@/agent/agent"
 import { Snapshot } from "@/snapshot"
 import { SessionSummary } from "./summary"
 import { Bus } from "@/bus"
+import { ContextEvent } from "@/bus/context-event"
 import { SessionRetry } from "./retry"
 import { SessionStatus } from "./status"
 import { Plugin } from "@/plugin"
@@ -81,7 +82,18 @@ export namespace SessionProcessor {
                     const part = reasoningMap[value.id]
                     part.text += value.text
                     if (value.providerMetadata) part.metadata = value.providerMetadata
-                    if (part.text) await Session.updatePart({ part, delta: value.text })
+                    if (part.text) {
+                      await Session.updatePart({ part, delta: value.text })
+
+                      // Emit reasoning delta event
+                      Bus.publish(ContextEvent.ReasoningDelta, {
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        partID: part.id,
+                        delta: value.text,
+                        timestamp: Date.now(),
+                      })
+                    }
                   }
                   break
 
@@ -140,6 +152,17 @@ export namespace SessionProcessor {
                     })
                     toolcalls[value.toolCallId] = part as MessageV2.ToolPart
 
+                    // Emit tool execution start event
+                    Bus.publish(ContextEvent.ToolExecutionStart, {
+                      sessionID: input.sessionID,
+                      messageID: input.assistantMessage.id,
+                      partID: match.id,
+                      callID: value.toolCallId,
+                      tool: value.toolName,
+                      input: value.input,
+                      timestamp: Date.now(),
+                    })
+
                     const parts = await MessageV2.parts(input.assistantMessage.id)
                     const lastThree = parts.slice(-DOOM_LOOP_THRESHOLD)
 
@@ -172,6 +195,7 @@ export namespace SessionProcessor {
                 case "tool-result": {
                   const match = toolcalls[value.toolCallId]
                   if (match && match.state.status === "running") {
+                    const endTime = Date.now()
                     await Session.updatePart({
                       ...match,
                       state: {
@@ -182,10 +206,23 @@ export namespace SessionProcessor {
                         title: value.output.title,
                         time: {
                           start: match.state.time.start,
-                          end: Date.now(),
+                          end: endTime,
                         },
                         attachments: value.output.attachments,
                       },
+                    })
+
+                    // Emit tool execution complete event
+                    Bus.publish(ContextEvent.ToolExecutionComplete, {
+                      sessionID: input.sessionID,
+                      messageID: input.assistantMessage.id,
+                      partID: match.id,
+                      callID: value.toolCallId,
+                      tool: match.tool,
+                      input: value.input,
+                      output: value.output.output,
+                      durationMs: endTime - match.state.time.start,
+                      timestamp: endTime,
                     })
 
                     delete toolcalls[value.toolCallId]
@@ -196,17 +233,32 @@ export namespace SessionProcessor {
                 case "tool-error": {
                   const match = toolcalls[value.toolCallId]
                   if (match && match.state.status === "running") {
+                    const endTime = Date.now()
+                    const errorStr = (value.error as Error).toString()
                     await Session.updatePart({
                       ...match,
                       state: {
                         status: "error",
                         input: value.input,
-                        error: (value.error as any).toString(),
+                        error: errorStr,
                         time: {
                           start: match.state.time.start,
-                          end: Date.now(),
+                          end: endTime,
                         },
                       },
+                    })
+
+                    // Emit tool execution error event
+                    Bus.publish(ContextEvent.ToolExecutionError, {
+                      sessionID: input.sessionID,
+                      messageID: input.assistantMessage.id,
+                      partID: match.id,
+                      callID: value.toolCallId,
+                      tool: match.tool,
+                      input: value.input,
+                      error: errorStr,
+                      durationMs: endTime - match.state.time.start,
+                      timestamp: endTime,
                     })
 
                     if (
@@ -274,6 +326,16 @@ export namespace SessionProcessor {
                   if (await SessionCompaction.isOverflow({ tokens: usage.tokens, model: input.model })) {
                     needsCompaction = true
                   }
+
+                  // Emit step complete event
+                  Bus.publish(ContextEvent.StepComplete, {
+                    sessionID: input.sessionID,
+                    messageID: input.assistantMessage.id,
+                    finishReason: value.finishReason,
+                    tokens: usage.tokens,
+                    cost: usage.cost,
+                    timestamp: Date.now(),
+                  })
                   break
 
                 case "text-start":
@@ -294,11 +356,21 @@ export namespace SessionProcessor {
                   if (currentText) {
                     currentText.text += value.text
                     if (value.providerMetadata) currentText.metadata = value.providerMetadata
-                    if (currentText.text)
+                    if (currentText.text) {
                       await Session.updatePart({
                         part: currentText,
                         delta: value.text,
                       })
+
+                      // Emit text delta event
+                      Bus.publish(ContextEvent.TextDelta, {
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        partID: currentText.id,
+                        delta: value.text,
+                        timestamp: Date.now(),
+                      })
+                    }
                   }
                   break
 
