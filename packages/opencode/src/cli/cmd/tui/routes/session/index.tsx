@@ -1398,10 +1398,84 @@ type ToolProps<T extends Tool.Info> = {
   part: ToolPart
 }
 function GenericTool(props: ToolProps<any>) {
+  const { theme } = useTheme()
+  const [expanded, setExpanded] = createSignal(false)
+  const [showArgs, setShowArgs] = createSignal(false)
+
+  // Parse MCP tool name: "server_toolname" -> { server: "server", tool: "toolname" }
+  const parsedName = createMemo(() => {
+    const parts = props.tool.split("_")
+    if (parts.length >= 2) {
+      const server = parts[0]
+      const tool = parts.slice(1).join("_")
+      return { server, tool, isMcp: true }
+    }
+    return { server: null, tool: props.tool, isMcp: false }
+  })
+
+  const output = createMemo(() => (props.metadata.displayOutput ?? props.output)?.trim() ?? "")
+  const lines = createMemo(() => output().split("\n"))
+  const overflow = createMemo(() => lines().length > 10)
+  const limited = createMemo(() => {
+    if (expanded() || !overflow()) return output()
+    return [...lines().slice(0, 10), "…"].join("\n")
+  })
+
+  const hasArgs = createMemo(() => Object.keys(props.input).length > 0)
+  const argsJson = createMemo(() => JSON.stringify(props.input, null, 2))
+
+  const title = createMemo(() => {
+    const { server, tool } = parsedName()
+    if (server) {
+      return `# ${tool} (${server})`
+    }
+    return `# ${tool}`
+  })
+
   return (
-    <InlineTool icon="⚙" pending="Writing command..." complete={true} part={props.part}>
-      {props.tool} {input(props.input)}
-    </InlineTool>
+    <Switch>
+      <Match when={props.metadata.displayOutput !== undefined || props.output !== undefined}>
+        <BlockTool
+          title={title()}
+          part={props.part}
+          onClick={overflow() || hasArgs() ? () => setExpanded((prev) => !prev) : undefined}
+        >
+          <box gap={1}>
+            <Show when={hasArgs()}>
+              <box>
+                <text
+                  fg={theme.textMuted}
+                  onMouseUp={(e) => {
+                    e.stopPropagation()
+                    setShowArgs((prev) => !prev)
+                  }}
+                >
+                  {showArgs() ? "▼" : "▶"} Arguments
+                </text>
+                <Show when={showArgs()}>
+                  <text fg={theme.text} paddingLeft={2}>
+                    {argsJson()}
+                  </text>
+                </Show>
+              </box>
+            </Show>
+            <Show when={output()}>
+              <text fg={theme.text}>{limited()}</text>
+              <Show when={overflow()}>
+                <text fg={theme.textMuted}>{expanded() ? "Click to collapse" : "Click to expand"}</text>
+              </Show>
+            </Show>
+          </box>
+        </BlockTool>
+      </Match>
+      <Match when={true}>
+        <InlineTool icon="⚙" pending="Running..." complete={props.part.state.status === "completed"} part={props.part}>
+          {parsedName().tool}
+          {parsedName().server && <span style={{ fg: theme.textMuted }}> ({parsedName().server})</span>}
+          {" "}{input(props.input)}
+        </InlineTool>
+      </Match>
+    </Switch>
   )
 }
 
