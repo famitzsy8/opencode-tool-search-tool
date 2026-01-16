@@ -7,7 +7,7 @@ This is a fork to implement a Tool Search Tool for OpenCode, mimicking [Claude's
 
 ## Current State
 
-Currently, only a simple Fuzzysearch version is in place, allowing the agent to search for a tool and its description. Fuzzysearch returns matches with the query that are "similar" (mostly based on edit distance). We return at most 5 results/tools from the search.
+Currently, only a BM25 version is in place, allowing the agent to search for a tool and its description. For more information on how BM25 works check out the [Wikipedia page](https://en.wikipedia.org/wiki/Okapi_BM25).
 
 ## How To Run
 
@@ -27,3 +27,4 @@ This allows the agent to be aware about its ability to read, write and edit a fi
 ```bash
 bun run dev
 ```
+

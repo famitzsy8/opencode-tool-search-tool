@@ -59,7 +59,7 @@ How NOT to Use It:
         tools: toolNames,
         displayOutput: toolNames.join("\n"),
       },
-      output: `Found ${results.length} tools matching "${args.query}":\n\n${formatted}\n\nThese tools are now available for use.`,
+      output: `Now you can also use the following tools: ${toolNames.join(", ")}`,
     }
   },
 })
