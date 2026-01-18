@@ -1,5 +1,9 @@
 # OpenCode: Tool Search Fork
 
+![Tool Search Graphic](./tool-search-figure.png)
+
+
+
 This is a fork to implement a Tool Search Tool for OpenCode, mimicking [Claude's Tool Search Tool ](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool). Such a tool allows for two main things:
 
 - Keeping context free of tool descriptions and schemas. Especially helpful for local LLM users that seek to save VRAM by keeping context windows small
@@ -42,4 +46,14 @@ This allows the agent to be aware about its ability to read, write and edit a fi
 
 ```bash
 bun run dev
+```
+
+## How To Test
+
+We have two simple CLI scripts (RegEx & BM25) for you to test them with your own inputs. Run the following commands:
+
+```bash
+cd packages/opencode
+bun run src/search/test-bm25-cli.ts # To Test BM25 implementation
+bun run src/search/test-bm25-cli.ts # To Test RegEx implementation
 ```
