@@ -12,6 +12,7 @@ import { WriteTool } from "./write"
 import { InvalidTool } from "./invalid"
 import { SkillTool } from "./skill"
 import { ToolSearchTool } from "./tool-search"
+import { ToolSearchRegexTool } from "./tool-search-regex"
 import type { Agent } from "../agent/agent"
 import { Tool } from "./tool"
 import { Instance } from "../project/instance"
@@ -95,6 +96,7 @@ export namespace ToolRegistry {
     return [
       InvalidTool,
       ToolSearchTool,
+      ToolSearchRegexTool,
       ...(Flag.OPENCODE_CLIENT === "cli" ? [QuestionTool] : []),
       BashTool,
       ReadTool,

@@ -17,7 +17,7 @@ export namespace ToolCatalog {
   }
 
   // Default core tools that are always loaded (never deferred)
-  const DEFAULT_CORE_TOOLS = ["tool_search", "invalid"]
+  const DEFAULT_CORE_TOOLS = ["tool_search", "tool_search_regex", "invalid"]
 
   let catalog: CatalogEntry[] = []
   let searchIndex: BM25.Index<CatalogEntry> | null = null
@@ -97,6 +97,23 @@ export namespace ToolCatalog {
     return results
       .filter((r) => !opts?.source || r.item.source === opts.source)
       .map((r) => r.item)
+  }
+
+  export function searchRegex(
+    pattern: string,
+    opts?: { limit?: number; source?: string },
+  ): CatalogEntry[] {
+    if (catalog.length === 0) return []
+
+    const regex = new RegExp(pattern, "i")
+    const limit = opts?.limit ?? 5
+
+    return catalog
+      .filter((entry) => {
+        if (opts?.source && entry.source !== opts.source) return false
+        return regex.test(entry.name) || regex.test(entry.description)
+      })
+      .slice(0, limit)
   }
 
   export function get(id: string): CatalogEntry | undefined {
