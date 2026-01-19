@@ -13,6 +13,8 @@ import { Log } from "@/util/log"
 import { ShareNext } from "@/share/share-next"
 import { ToolCatalog } from "../tool/catalog"
 import { MCP } from "../mcp"
+import { Snapshot } from "../snapshot"
+import { Truncate } from "../tool/truncation"
 
 export async function InstanceBootstrap() {
   Log.Default.info("bootstrapping", { directory: Instance.directory })
@@ -24,6 +26,8 @@ export async function InstanceBootstrap() {
   FileWatcher.init()
   File.init()
   Vcs.init()
+  Snapshot.init()
+  Truncate.init()
   await ToolCatalog.init()
 
   Bus.subscribe(MCP.ToolsChanged, async () => {

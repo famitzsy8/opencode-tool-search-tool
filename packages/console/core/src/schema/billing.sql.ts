@@ -1,4 +1,4 @@
-import { bigint, boolean, index, int, json, mysqlTable, uniqueIndex, varchar } from "drizzle-orm/mysql-core"
+import { bigint, boolean, index, int, json, mysqlEnum, mysqlTable, uniqueIndex, varchar } from "drizzle-orm/mysql-core"
 import { timestamps, ulid, utc, workspaceColumns } from "../drizzle/types"
 import { workspaceIndexes } from "./workspace.sql"
 
@@ -21,7 +21,15 @@ export const BillingTable = mysqlTable(
     reloadError: varchar("reload_error", { length: 255 }),
     timeReloadError: utc("time_reload_error"),
     timeReloadLockedTill: utc("time_reload_locked_till"),
+    subscription: json("subscription").$type<{
+      status: "subscribed"
+      coupon?: string
+      seats: number
+      plan: "20" | "100" | "200"
+    }>(),
     subscriptionID: varchar("subscription_id", { length: 28 }),
+    subscriptionPlan: mysqlEnum("subscription_plan", ["20", "100", "200"] as const),
+    timeSubscriptionBooked: utc("time_subscription_booked"),
   },
   (table) => [
     ...workspaceIndexes(table),
@@ -54,6 +62,15 @@ export const PaymentTable = mysqlTable(
     paymentID: varchar("payment_id", { length: 255 }),
     amount: bigint("amount", { mode: "number" }).notNull(),
     timeRefunded: utc("time_refunded"),
+    enrichment: json("enrichment").$type<
+      | {
+          type: "subscription"
+          couponID?: string
+        }
+      | {
+          type: "credit"
+        }
+    >(),
   },
   (table) => [...workspaceIndexes(table)],
 )
